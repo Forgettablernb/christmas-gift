@@ -616,21 +616,67 @@ function mHat(t, gain){
   }catch(err){}
 }
 
+var ARP_A = [0,1,2,3,2,1,0,2];
+var ARP_B = [0,1,2,3,3,2,1,0];
+var LEAD  = [0,2,3,2,0,1,2,3];
+
 function scheduleBar(t0, bar){
   var p = PROG[bar % PROG.length];
-  mNote(t0, p.root, 0.95, 0.15, "sine");
-  mNote(t0+BEAT*1.5, p.root, 0.6, 0.08, "sine");
-  mNote(t0+BEAT*3.0, p.root*1.5, 0.7, 0.10, "sine");
+  var cyc = bar % 16;
+  var verse = cyc < 8;
+  var climb = cyc >= 8 && cyc < 12;
+
+  // 贝斯
+  var bv = verse ? 0.14 : (climb ? 0.16 : 0.18);
+  mNote(t0, p.root, 0.9, bv, "sine");
+  mNote(t0+BEAT*1.5, p.root, 0.55, bv*0.55, "sine");
+  mNote(t0+BEAT*2.0, p.root, 0.5, bv*0.5, "sine");
+  mNote(t0+BEAT*3.0, p.root*1.5, 0.65, bv*0.7, "sine");
+  if(!verse){
+    mNote(t0+BEAT*2.5, p.root, 0.35, bv*0.45, "sine");
+    mNote(t0+BEAT*3.5, p.root*1.5, 0.3, bv*0.4, "sine");
+  }
+
+  // 电钢琴和弦
   for(var k=0;k<p.chord.length;k++){
-    mNote(t0, p.chord[k], 1.5, 0.032, "triangle", true);
-    mNote(t0+BEAT*2, p.chord[k], 1.2, 0.026, "triangle", true);
-    mNote(t0+BEAT*2.5, p.chord[k]*1.5, 0.7, 0.014, "sine", true);
+    var g1 = verse ? 0.030 : (climb ? 0.036 : 0.040);
+    mNote(t0, p.chord[k], 1.5, g1, "triangle", true);
+    mNote(t0+BEAT*2, p.chord[k], 1.2, g1*0.85, "triangle", true);
+    mNote(t0+BEAT*2.5, p.chord[k]*1.5, 0.7, g1*0.45, "sine", true);
+    if(!verse){ mNote(t0+BEAT*3.25, p.chord[k]*1.5, 0.55, g1*0.5, "triangle", true); }
   }
-  var arp=[0,1,2,3,2,1,0,2];
-  for(var s=0;s<8;s++){
-    mNote(t0+s*BEAT*0.5+0.02, p.chord[arp[s]]*2, 0.32, 0.011, "sine", true);
+
+  // 琶音：主歌八分、爬坡十六分、副歌十六分 + 更高八度
+  var pattern = verse ? ARP_A : ARP_B;
+  var oct = verse ? 2 : (climb ? 2.5 : 3);
+  var steps = verse ? 8 : 16;
+  for(var s=0;s<steps;s++){
+    var idx = pattern[s % pattern.length];
+    var gain = verse ? 0.011 : (climb ? 0.012 : 0.014);
+    mNote(t0 + s*BEAT*(verse?0.5:0.25) + 0.02, p.chord[idx]*oct, verse ? 0.32 : 0.22, gain, "sine", true);
   }
-  for(var h=0;h<4;h++){ mHat(t0+h*BEAT, h%2===0 ? 0.020 : 0.011); }
+
+  // 副歌：高音铃 + 四音旋律点缀
+  if(!verse){
+    mNote(t0+BEAT*0.5, p.chord[1]*4, 0.5, 0.020, "sine");
+    mNote(t0+BEAT*2.5, p.chord[2]*4, 0.6, 0.018, "sine");
+    var lead = climb ? LEAD : [LEAD[3],LEAD[2],LEAD[1],LEAD[0],LEAD[1],LEAD[2],LEAD[3],LEAD[0]];
+    for(var m=0;m<4;m++){
+      mNote(t0 + m*BEAT, p.chord[lead[m % lead.length]]*4, 0.55, climb ? 0.012 : 0.014, "sine", true);
+    }
+  }
+
+  // 进副歌前的军鼓滚奏
+  if(cyc === 7 || cyc === 11){
+    for(var r=0;r<16;r++){ mHat(t0 + r*BEAT*0.25, 0.006 + r*0.0012); }
+  }
+
+  // 踩镲
+  if(verse){
+    for(var h=0;h<4;h++){ mHat(t0+h*BEAT, h%2===0 ? 0.018 : 0.010); }
+  } else {
+    for(var h2=0;h2<8;h2++){ mHat(t0+h2*BEAT*0.5, h2%2===0 ? 0.022 : 0.012); }
+  }
 }
 
 function startMusic(){
@@ -644,7 +690,7 @@ function startMusic(){
     if(!audioOn) return;
     if(music.nextT < audioCtx.currentTime - 1){ music.nextT = audioCtx.currentTime + 0.1; }
     while(music.nextT < audioCtx.currentTime + 0.35){
-      scheduleBar(music.nextT, music.step % 4);
+      scheduleBar(music.nextT, music.step % 16);
       music.nextT += BEAT*4;
       music.step++;
     }
