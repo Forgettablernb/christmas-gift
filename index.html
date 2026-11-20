@@ -44,6 +44,8 @@
   #bless .cn{margin-top:14px;font-size:clamp(15px,2.4vw,20px);letter-spacing:.5em;color:#ffe4b5;opacity:.92}
   #bless .note{margin-top:22px;font-size:13px;letter-spacing:.12em;color:#d9c7e8;opacity:.75}
   #bless .line{margin:20px auto 0;width:64px;height:1px;background:linear-gradient(90deg,transparent,#ffd89b,transparent)}
+  #bless .sign{margin-top:18px;font-family:Georgia,"Times New Roman",serif;font-style:italic;
+    font-size:13px;letter-spacing:.24em;color:#e7d8f5;opacity:.72}
   #hud{position:fixed;top:18px;right:18px;display:flex;flex-direction:column;gap:9px;align-items:flex-end;z-index:5}
   .btn{
     appearance:none;border:1px solid rgba(255,225,180,.28);cursor:pointer;
@@ -98,12 +100,13 @@
   <div class="cn">愿 你 的 愿 望 都 实 现</div>
   <div class="line"></div>
   <div class="note">伸手，或者点一下，把它打开</div>
+  <div class="sign">— Forgettablernb</div>
 </div>
 
 <div id="hud">
   <button class="btn primary" id="btnGesture">🖐 开启隔空手势</button>
   <button class="btn" id="btnToggle">✨ 打开 / 收起</button>
-  <button class="btn" id="btnSound">🔔 声音：关</button>
+  <button class="btn on" id="btnSound">🔔 音乐：开</button>
   <div id="status">点一下屏幕也能拆礼物</div>
 </div>
 
@@ -126,16 +129,16 @@
 (function(){
 "use strict";
 // ↓↓↓ 想换祝福语，改这一行就行 ↓↓↓
-var GREETING_CN = "愿 你 的 愿 望 都 实 现";
+var GREETING_CN = "平安喜樂";
 document.querySelector("#bless .cn").textContent = GREETING_CN;
 
 var W = window.innerWidth, H = window.innerHeight;
 var renderer, scene, camera, treeGroup, treePts, snowPts, star, glow, gifts = [];
 var treePos, burstPos, phaseArr, baseCol, baseSize;
-var N = 2700, SNOW = 420;
+var N = 2700, SNOW = 1000;
 var mix = 0, target = 0, mx = 0, my = 0, cmx = 0, cmy = 0;
 var last = performance.now(), time = 0, pulseV = 0;
-var audioCtx = null, audioOn = false;
+var audioCtx = null, audioOn = true;
 var $ = function(s){ return document.querySelector(s); };
 
 function rand(a,b){ return a + Math.random()*(b-a); }
@@ -313,7 +316,7 @@ function init(){
     var ha = (b/5)*Math.PI*2 + 0.4;
     var home = new THREE.Vector3(Math.cos(ha)*2.05, -2.85 + (b%2)*0.35, Math.sin(ha)*2.05);
     var fa = rand(0,Math.PI*2);
-    var fly = new THREE.Vector3(Math.cos(fa)*rand(2.2,4.2), rand(-1.6,2.4), rand(2.0,4.6));
+    var fly = new THREE.Vector3(Math.cos(fa)*rand(2.6,5.0), rand(-1.8,2.8), rand(2.4,5.2));
     grp.position.copy(home);
     grp.userData = {home:home, fly:fly, spin:rand(0.4,1.1), ph:rand(0,6)};
     gifts.push(grp);
@@ -324,10 +327,11 @@ function init(){
   var sp=new Float32Array(SNOW*3), sc=new Float32Array(SNOW*3), ss=new Float32Array(SNOW);
   for(var j=0;j<SNOW;j++){
     sp[j*3]=rand(-11,11); sp[j*3+1]=rand(-8,9); sp[j*3+2]=rand(-7,7);
-    sc[j*3]=0.82; sc[j*3+1]=0.88; sc[j*3+2]=1.0;
-    ss[j]=rand(0.7,1.9);
+    var kk=rand(0.85,1.0), tint=Math.random();
+    sc[j*3]=kk; sc[j*3+1]=kk*(0.94+tint*0.05); sc[j*3+2]=kk*(0.98+tint*0.02);
+    ss[j]=rand(0.9,2.6);
   }
-  snowPts = makePoints(sp,sc,ss,makeMaterial(0.7, 1.0));
+  snowPts = makePoints(sp,sc,ss,makeMaterial(0.85, 1.12));
   scene.add(snowPts);
   snowPts.userData.sp = sp;
 
@@ -376,23 +380,31 @@ function loop(now){
     g.position.y += Math.sin(time*1.3+u.ph)*0.09*e;
     g.rotation.y += dt*(0.25 + u.spin*e);
     g.rotation.x = Math.sin(time*0.7+u.ph)*0.18*e;
-    g.scale.setScalar(1 + e*0.7);
+    g.scale.setScalar(1 + e*0.9);
   }
 
   // 雪花下落
   var sa = snowPts.geometry.attributes.position.array;
   for(var j=0;j<SNOW;j++){
     var j3=j*3;
-    sa[j3+1] -= dt*(0.35 + (j%7)*0.06);
-    sa[j3]   += Math.sin(time*0.5+j)*dt*0.12;
+    sa[j3+1] -= dt*(0.5 + (j%9)*0.075);
+    sa[j3]   += Math.sin(time*0.5+j*0.7)*dt*0.24 + dt*0.10;
+    sa[j3+2] += Math.cos(time*0.4+j*1.3)*dt*0.07;
+    if(sa[j3] > 11){ sa[j3] -= 22; } else if(sa[j3] < -11){ sa[j3] += 22; }
     if(sa[j3+1] < -8){ sa[j3+1]=9; sa[j3]=rand(-11,11); sa[j3+2]=rand(-7,7); }
   }
   snowPts.geometry.attributes.position.needsUpdate = true;
 
+  // —— 流星 · 烟花 —
+  if(time > meteorAt){ spawnMeteor(); meteorAt = time + rand(6, 13); }
+  if(e > 0.55 && time > fwAt){ spawnSkyFirework(); fwAt = time + rand(3.5, 7.5); }
+  updateBursts(dt);
+  updateMeteors(dt);
+
   // 视角：鼠标 / 手掌视差
   cmx += (mx-cmx)*0.045; cmy += (my-cmy)*0.045;
-  camera.position.x = cmx*2.2;
-  camera.position.y = 0.6 - cmy*1.2;
+  camera.position.x = cmx*2.2 + Math.sin(time*47.0)*0.10*pulseV;
+  camera.position.y = 0.6 - cmy*1.2 + Math.cos(time*53.0)*0.07*pulseV;
   camera.position.z = 13 - e*1.2;
   camera.lookAt(0, -0.1, 0);
   treeGroup.rotation.y = time*0.075 + cmx*0.45;
@@ -412,8 +424,10 @@ function resize(){
 }
 
 function toggle(){
-  target = target>0.5 ? 0 : 1;
+  var opening = target < 0.5;
+  target = opening ? 1 : 0;
   pulse(); chime();
+  if(opening) openCelebrate();
   setStatus(target>0.5 ? "🎁 礼物打开啦" : "🌲 收成一棵树");
 }
 function pulse(){ pulseV = 1; }
@@ -421,8 +435,8 @@ function pulse(){ pulseV = 1; }
 function chime(){
   if(!audioOn) return;
   try{
-    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
-    if(audioCtx.state==="suspended") audioCtx.resume();
+    ensureAudio();
+    var out = music.master || audioCtx.destination;
     var t0=audioCtx.currentTime;
     [0,0.11,0.22,0.36].forEach(function(d,k){
       var o=audioCtx.createOscillator(), g=audioCtx.createGain();
@@ -430,10 +444,229 @@ function chime(){
       g.gain.setValueAtTime(0.0001,t0+d);
       g.gain.exponentialRampToValueAtTime(0.18,t0+d+0.015);
       g.gain.exponentialRampToValueAtTime(0.0001,t0+d+1.1);
-      o.connect(g); g.connect(audioCtx.destination);
+      o.connect(g); g.connect(out);
       o.start(t0+d); o.stop(t0+d+1.2);
     });
   }catch(err){}
+}
+
+
+/* ================= 流星 · 烟花 · 拆礼物爆闪 ================= */
+
+var fireworks = [], meteors = [];
+var fwAt = 2.5, meteorAt = 3.0;
+var FW_PALETTE = [
+  [1.00,0.82,0.46],[1.00,0.36,0.32],[0.56,0.85,1.00],
+  [1.00,0.72,0.30],[0.98,0.55,0.78],[1.00,0.95,0.78]
+];
+
+function fwPick(){ return FW_PALETTE[(Math.random()*FW_PALETTE.length)|0]; }
+
+function makeBurst(n, pos, speed, sizeK, life, colors, gravity, drag){
+  var sp=new Float32Array(n*3), sc=new Float32Array(n*3), ss=new Float32Array(n);
+  var vel=new Float32Array(n*3);
+  for(var i=0;i<n;i++){
+    var i3=i*3;
+    sp[i3]=pos.x; sp[i3+1]=pos.y; sp[i3+2]=pos.z;
+    var th=Math.random()*Math.PI*2, ph=Math.acos(rand(-1,1)), v=speed*rand(0.5,1.0);
+    vel[i3]  = v*Math.sin(ph)*Math.cos(th);
+    vel[i3+1]= v*Math.cos(ph);
+    vel[i3+2]= v*Math.sin(ph)*Math.sin(th)*0.9;
+    var c=colors[(Math.random()*colors.length)|0], k=rand(0.65,1.0);
+    sc[i3]=c[0]*k; sc[i3+1]=c[1]*k; sc[i3+2]=c[2]*k;
+    ss[i]=rand(1.0,2.8)*sizeK;
+  }
+  var pts = makePoints(sp, sc, ss, makeMaterial(1.0, 1.0));
+  scene.add(pts);
+  return {pts:pts, vel:vel, life:0, maxLife:life, gravity:gravity, drag:drag};
+}
+
+function spawnSkyFirework(){
+  var pos = new THREE.Vector3(rand(-6.5,6.5), rand(2.4,6.0), rand(-4.5,0.5));
+  var colors = [fwPick(), fwPick()];
+  fireworks.push(makeBurst(190, pos, rand(2.8,4.2), 1.0, rand(1.5,2.1), colors, -2.2, 1.15));
+}
+
+function giftSparkles(){
+  for(var b=0;b<gifts.length;b++){
+    var gp = gifts[b].position;
+    fireworks.push(makeBurst(60, gp.clone(), rand(1.0,1.6), 0.8, rand(0.9,1.3), [fwPick()], -1.5, 2.4));
+  }
+}
+
+function openCelebrate(){
+  pulseV = Math.max(pulseV, 1.3);
+  giftSparkles();
+  for(var k=0;k<4;k++){
+    setTimeout(function(){ if(!document.hidden) spawnSkyFirework(); }, 140 + k*380);
+  }
+}
+
+function spawnMeteor(){
+  var n = 28;
+  var sp=new Float32Array(n*3), sc=new Float32Array(n*3), ss=new Float32Array(n);
+  var x0=rand(-9,9), y0=rand(4.5,7.5), z0=rand(-7,-3);
+  var dx=rand(0.5,0.95), dy=rand(-1.0,-0.75), dz=rand(-0.15,0.15);
+  var dl=Math.sqrt(dx*dx+dy*dy+dz*dz), len=rand(2.2,4.0), spd=rand(6,9);
+  dx/=dl; dy/=dl; dz/=dl;
+  for(var i=0;i<n;i++){
+    var u=i/(n-1), a=Math.pow(1-u,1.5);
+    sp[i*3]   = x0 - dx*len*u;
+    sp[i*3+1] = y0 - dy*len*u;
+    sp[i*3+2] = z0 - dz*len*u;
+    sc[i*3]=0.32+0.68*a; sc[i*3+1]=0.30+0.65*a; sc[i*3+2]=0.36+0.52*a;
+    ss[i]=0.5+2.4*a;
+  }
+  var pts = makePoints(sp, sc, ss, makeMaterial(0.95,1.0));
+  scene.add(pts);
+  meteors.push({pts:pts, vx:dx*spd, vy:dy*spd, vz:dz*spd, life:0, maxLife:1.9});
+}
+
+function updateBursts(dt){
+  for(var k=fireworks.length-1;k>=0;k--){
+    var fw=fireworks[k];
+    fw.life += dt;
+    var t = fw.life/fw.maxLife;
+    var p = fw.pts.geometry.attributes.position.array, v = fw.vel;
+    var damp = Math.max(0, 1 - fw.drag*dt);
+    for(var i=0;i<v.length;i+=3){
+      v[i]*=damp; v[i+1]=v[i+1]*damp + fw.gravity*dt; v[i+2]*=damp;
+      p[i]+=v[i]*dt; p[i+1]+=v[i+1]*dt; p[i+2]+=v[i+2]*dt;
+    }
+    fw.pts.geometry.attributes.position.needsUpdate = true;
+    fw.pts.material.uniforms.uAlpha.value = Math.max(0, 1 - t*t);
+    fw.pts.material.uniforms.uSizeScale.value = Math.max(0.25, 1 - 0.6*t);
+    if(fw.life >= fw.maxLife){
+      scene.remove(fw.pts); fw.pts.geometry.dispose(); fw.pts.material.dispose();
+      fireworks.splice(k,1);
+    }
+  }
+}
+
+function updateMeteors(dt){
+  for(var k=meteors.length-1;k>=0;k--){
+    var m=meteors[k];
+    m.life += dt;
+    var p = m.pts.geometry.attributes.position.array;
+    for(var i=0;i<p.length;i+=3){ p[i]+=m.vx*dt; p[i+1]+=m.vy*dt; p[i+2]+=m.vz*dt; }
+    m.pts.geometry.attributes.position.needsUpdate = true;
+    var t = m.life/m.maxLife;
+    m.pts.material.uniforms.uAlpha.value = Math.max(0, 0.95*(1 - t*t));
+    if(m.life >= m.maxLife){
+      scene.remove(m.pts); m.pts.geometry.dispose(); m.pts.material.dispose();
+      meteors.splice(k,1);
+    }
+  }
+}
+
+/* ================= 背景音乐（原创 · 温柔 R&B 电钢琴氛围，网页合成） ================= */
+
+var music = { master:null, delay:null, wet:null, fb:null, timer:null, nextT:0, step:0, started:false, vol:0.5 };
+var BEAT = 60/92;
+var PROG = [
+  {root:87.31, chord:[174.61,220.00,261.63,329.63]},
+  {root:82.41, chord:[164.81,196.00,246.94,293.66]},
+  {root:73.42, chord:[146.83,174.61,220.00,261.63]},
+  {root:65.41, chord:[130.81,164.81,196.00,246.94]}
+];
+
+function ensureAudio(){
+  if(!audioCtx){
+    audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    music.master = audioCtx.createGain();
+    music.master.gain.value = music.vol;
+    music.master.connect(audioCtx.destination);
+    music.delay = audioCtx.createDelay(1.0);
+    music.delay.delayTime.value = 0.30;
+    music.fb = audioCtx.createGain(); music.fb.gain.value = 0.26;
+    music.wet = audioCtx.createGain(); music.wet.gain.value = 0.20;
+    music.delay.connect(music.fb); music.fb.connect(music.delay);
+    music.delay.connect(music.wet); music.wet.connect(music.master);
+  }
+  if(audioCtx.state === "suspended") audioCtx.resume();
+}
+
+function mNote(t, freq, dur, gain, type, toDelay){
+  try{
+    var o=audioCtx.createOscillator(), g=audioCtx.createGain();
+    o.type=type||"sine";
+    o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(gain, t+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+dur);
+    o.connect(g); g.connect(music.master);
+    if(toDelay) g.connect(music.delay);
+    o.start(t); o.stop(t+dur+0.05);
+  }catch(err){}
+}
+
+function mHat(t, gain){
+  try{
+    var len=0.05;
+    var buf=audioCtx.createBuffer(1, Math.ceil(len*audioCtx.sampleRate), audioCtx.sampleRate);
+    var d=buf.getChannelData(0);
+    for(var i=0;i<d.length;i++){ d[i]=(Math.random()*2-1)*(1-i/d.length); }
+    var src=audioCtx.createBufferSource(); src.buffer=buf;
+    var hp=audioCtx.createBiquadFilter(); hp.type="highpass"; hp.frequency.value=6500;
+    var g=audioCtx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t+len);
+    src.connect(hp); hp.connect(g); g.connect(music.master);
+    src.start(t);
+  }catch(err){}
+}
+
+function scheduleBar(t0, bar){
+  var p = PROG[bar % PROG.length];
+  mNote(t0, p.root, 0.95, 0.15, "sine");
+  mNote(t0+BEAT*1.5, p.root, 0.6, 0.08, "sine");
+  mNote(t0+BEAT*3.0, p.root*1.5, 0.7, 0.10, "sine");
+  for(var k=0;k<p.chord.length;k++){
+    mNote(t0, p.chord[k], 1.5, 0.032, "triangle", true);
+    mNote(t0+BEAT*2, p.chord[k], 1.2, 0.026, "triangle", true);
+    mNote(t0+BEAT*2.5, p.chord[k]*1.5, 0.7, 0.014, "sine", true);
+  }
+  var arp=[0,1,2,3,2,1,0,2];
+  for(var s=0;s<8;s++){
+    mNote(t0+s*BEAT*0.5+0.02, p.chord[arp[s]]*2, 0.32, 0.011, "sine", true);
+  }
+  for(var h=0;h<4;h++){ mHat(t0+h*BEAT, h%2===0 ? 0.020 : 0.011); }
+}
+
+function startMusic(){
+  if(!audioOn) return;
+  ensureAudio();
+  if(music.timer) return;
+  music.started = true;
+  music.nextT = audioCtx.currentTime + 0.18;
+  music.step = 0;
+  music.timer = setInterval(function(){
+    if(!audioOn) return;
+    if(music.nextT < audioCtx.currentTime - 1){ music.nextT = audioCtx.currentTime + 0.1; }
+    while(music.nextT < audioCtx.currentTime + 0.35){
+      scheduleBar(music.nextT, music.step % 4);
+      music.nextT += BEAT*4;
+      music.step++;
+    }
+  }, 120);
+}
+
+function stopMusic(){
+  if(music.timer){ clearInterval(music.timer); music.timer = null; }
+}
+
+function startMusicToggle(flag){
+  ensureAudio();
+  if(!music.master) return;
+  var t = audioCtx.currentTime;
+  music.master.gain.setTargetAtTime(flag ? music.vol : 0.0001, t, 0.25);
+  if(flag) startMusic(); else stopMusic();
+}
+
+function kickAudio(){
+  window.removeEventListener("pointerdown", kickAudio);
+  window.removeEventListener("keydown", kickAudio);
+  if(audioOn) startMusic();
 }
 
 function setStatus(s){ $("#status").textContent = s; }
@@ -465,10 +698,13 @@ function bindEvents(){
   $("#btnToggle").addEventListener("click",toggle);
   $("#btnSound").addEventListener("click",function(){
     audioOn=!audioOn;
-    this.textContent = "🔔 声音：" + (audioOn?"开":"关");
+    this.textContent = "🔔 音乐：" + (audioOn?"开":"关");
     this.classList.toggle("on",audioOn);
+    startMusicToggle(audioOn);
     if(audioOn) chime();
   });
+  window.addEventListener("pointerdown", kickAudio);
+  window.addEventListener("keydown", kickAudio);
   $("#btnGesture").addEventListener("click",initGesture);
   $("#camClose").addEventListener("click",stopGesture);
 }
