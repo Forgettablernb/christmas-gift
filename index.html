@@ -36,7 +36,7 @@
   #bless{position:fixed;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;
     opacity:0;pointer-events:none;z-index:3}
   #bless::before{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    width:min(820px,94vw);height:330px;z-index:-1;pointer-events:none;
+    width:min(900px,94vw);height:390px;z-index:-1;pointer-events:none;
     background:radial-gradient(ellipse at center,rgba(10,7,26,.82),rgba(10,7,26,.45) 52%,transparent 78%)}
   #bless .merry{font-family:Georgia,"Times New Roman",serif;font-style:italic;
     font-size:clamp(30px,6.5vw,64px);letter-spacing:.04em;color:#fff6e0;
@@ -80,7 +80,7 @@
     #camWrap{width:118px;height:88px;bottom:118px;right:12px}
     #top{padding-top:18px}
     #hint{bottom:14px;font-size:10.5px;letter-spacing:.06em}
-    #bless::before{height:280px}
+    #bless::before{height:320px}
   }
 </style>
 </head>
@@ -133,9 +133,9 @@ var GREETING_CN = "平安喜樂";
 document.querySelector("#bless .cn").textContent = GREETING_CN;
 
 var W = window.innerWidth, H = window.innerHeight;
-var renderer, scene, camera, treeGroup, treePts, snowPts, star, glow, gifts = [];
+var renderer, scene, camera, treeGroup, treePts, snowPts, star, glow, halo, gifts = [];
 var treePos, burstPos, phaseArr, baseCol, baseSize;
-var N = 2700, SNOW = 1000;
+var N = 4200, SNOW = 1000;
 var mix = 0, target = 0, mx = 0, my = 0, cmx = 0, cmy = 0;
 var last = performance.now(), time = 0, pulseV = 0;
 var audioCtx = null, audioOn = true;
@@ -158,13 +158,16 @@ function glowTexture(){
 var VERT = [
   "attribute float aSize;",
   "attribute vec3 aColor;",
+  "attribute float aPhase;",
   "varying vec3 vColor;",
   "uniform float uPulse;",
   "uniform float uSizeScale;",
+  "uniform float uTime;",
   "void main(){",
-  "  vColor = aColor;",
+  "  float tw = 0.78 + 0.22*sin(uTime*1.9 + aPhase);",
+  "  vColor = aColor * (0.82 + 0.18*sin(uTime*2.6 + aPhase*1.7));",
   "  vec4 mv = modelViewMatrix * vec4(position,1.0);",
-  "  gl_PointSize = aSize * uSizeScale * (1.0 + uPulse*0.6) * (48.0 / max(-mv.z,0.1));",
+  "  gl_PointSize = aSize * uSizeScale * (1.0 + uPulse*0.6) * tw * (48.0 / max(-mv.z,0.1));",
   "  gl_Position = projectionMatrix * mv;",
   "}"
 ].join("\n");
@@ -175,15 +178,15 @@ var FRAG = [
   "void main(){",
   "  vec2 c = gl_PointCoord - vec2(0.5);",
   "  float d = length(c);",
-  "  float a = smoothstep(0.5, 0.06, d);",
-  "  a = pow(a, 2.2) * uAlpha;",
+  "  float a = smoothstep(0.5, 0.0, d);",
+  "  a = pow(a, 1.7) * uAlpha;",
   "  gl_FragColor = vec4(vColor, a);",
   "}"
 ].join("\n");
 
 function makeMaterial(alpha, sizeScale){
   return new THREE.ShaderMaterial({
-    uniforms:{ uPulse:{value:0}, uAlpha:{value:alpha}, uSizeScale:{value:sizeScale} },
+    uniforms:{ uPulse:{value:0}, uAlpha:{value:alpha}, uSizeScale:{value:sizeScale}, uTime:{value:0} },
     vertexShader:VERT, fragmentShader:FRAG,
     transparent:true, depthWrite:false,
     blending:THREE.AdditiveBlending
@@ -195,6 +198,9 @@ function makePoints(pos, col, size, mat){
   g.setAttribute("position", new THREE.BufferAttribute(pos,3));
   g.setAttribute("aColor",   new THREE.BufferAttribute(col,3));
   g.setAttribute("aSize",    new THREE.BufferAttribute(size,1));
+  var cnt = pos.length/3, ph = new Float32Array(cnt);
+  for(var i=0;i<cnt;i++){ ph[i] = Math.random()*Math.PI*2; }
+  g.setAttribute("aPhase",   new THREE.BufferAttribute(ph,1));
   var p = new THREE.Points(g, mat);
   p.frustumCulled = false;
   return p;
@@ -219,7 +225,7 @@ function init(){
   scene.add(treeGroup);
 
   var tex = glowTexture();
-  var mat = makeMaterial(0.22, 1.0);
+  var mat = makeMaterial(0.34, 1.15);
 
   treePos   = new Float32Array(N*3);
   burstPos  = new Float32Array(N*3);
@@ -228,20 +234,20 @@ function init(){
   baseSize  = new Float32Array(N);
 
   var palette = [
-    [1.00,0.82,0.46],  // 金
-    [1.00,0.95,0.78],  // 暖白
-    [1.00,0.36,0.32],  // 红
-    [0.38,1.00,0.62],  // 绿
-    [0.56,0.85,1.00],  // 冰蓝
-    [1.00,0.72,0.30]   // 橙金
+    [1.00,0.84,0.50],  // 香槟金
+    [1.00,0.95,0.76],  // 暖白
+    [1.00,0.70,0.28],  // 琥珀金
+    [1.00,0.90,0.60],  // 浅金
+    [1.00,0.34,0.26],  // 红（点缀）
+    [0.60,0.88,1.00]   // 冰蓝（点缀）
   ];
-  var weights = [0,0,0,1,1,2,2,3,3,4,5,5];
+  var weights = [0,0,0,0,1,1,1,1,1,2,2,3,3,3,4,5];
 
   for(var i=0;i<N;i++){
     // —— 圣诞树：分层锥体，部分粒子落在轮廓上 ——
     var t = Math.pow(Math.random(), 0.82);
-    var y = -3.0 + t*6.1;
-    var rMax = (1-t)*2.55 + 0.10;
+    var y = -3.6 + t*7.4;
+    var rMax = (1-t)*3.35 + 0.12;
     var edge = Math.random() < 0.5;
     var r = edge ? rMax*rand(0.86,1.02) : rMax*Math.sqrt(Math.random())*0.92;
     var a = Math.random()*Math.PI*2;
@@ -253,7 +259,7 @@ function init(){
     var belt = Math.random() < 0.22;
     var theta = Math.random()*Math.PI*2;
     var phi = Math.acos(rand(-1,1));
-    var R = rand(3.2, 7.4);
+    var R = rand(3.8, 8.6);
     var bx = R*Math.sin(phi)*Math.cos(theta);
     var by = belt ? rand(-1.1,1.1) : R*Math.cos(phi)*0.78;
     var bz = R*Math.sin(phi)*Math.sin(theta)*0.8;
@@ -266,7 +272,7 @@ function init(){
     baseCol[i*3]   = Math.min(1, c[0]+topGlow);
     baseCol[i*3+1] = Math.min(1, c[1]+topGlow);
     baseCol[i*3+2] = Math.min(1, c[2]+topGlow*0.7);
-    baseSize[i] = edge ? rand(2.0,3.6) : rand(1.1,2.5);
+    baseSize[i] = edge ? rand(2.6,4.8) : rand(1.4,3.2);
   }
 
   treePts = makePoints(treePos.slice(), baseCol, baseSize, mat);
@@ -285,16 +291,24 @@ function init(){
     new THREE.ShapeGeometry(shape),
     new THREE.MeshBasicMaterial({color:0xffe6a6, side:THREE.DoubleSide, transparent:true, opacity:0.96})
   );
-  star.position.set(0, 3.28, 0);
+  star.position.set(0, 3.98, 0);
   treeGroup.add(star);
 
   glow = new THREE.Sprite(new THREE.SpriteMaterial({
     map:tex, color:0xffd98a, transparent:true, blending:THREE.AdditiveBlending,
-    depthWrite:false, opacity:0.5
+    depthWrite:false, opacity:0.72
   }));
-  glow.scale.set(2.2,2.2,1);
-  glow.position.set(0,3.28,0);
+  glow.scale.set(3.4,3.4,1);
+  glow.position.set(0,3.98,0);
   treeGroup.add(glow);
+
+  halo = new THREE.Sprite(new THREE.SpriteMaterial({
+    map:tex, color:0xffb35e, transparent:true, blending:THREE.AdditiveBlending,
+    depthWrite:false, opacity:0.16
+  }));
+  halo.scale.set(7.2,7.2,1);
+  halo.position.set(0,3.98,0);
+  treeGroup.add(halo);
 
   // —— 礼物盒 ——
   var boxColors = [0xd6434f,0x2f8f5b,0xe0a53c,0x7a53b8,0xc94f86];
@@ -314,9 +328,9 @@ function init(){
     bow.position.y = s*0.55; grp.add(bow);
 
     var ha = (b/5)*Math.PI*2 + 0.4;
-    var home = new THREE.Vector3(Math.cos(ha)*2.05, -2.85 + (b%2)*0.35, Math.sin(ha)*2.05);
+    var home = new THREE.Vector3(Math.cos(ha)*2.75, -3.45 + (b%2)*0.35, Math.sin(ha)*2.75);
     var fa = rand(0,Math.PI*2);
-    var fly = new THREE.Vector3(Math.cos(fa)*rand(2.6,5.0), rand(-1.8,2.8), rand(2.4,5.2));
+    var fly = new THREE.Vector3(Math.cos(fa)*rand(4.0,5.6), rand(-2.6,0.6), Math.sin(fa)*rand(3.2,4.6));
     grp.position.copy(home);
     grp.userData = {home:home, fly:fly, spin:rand(0.4,1.1), ph:rand(0,6)};
     gifts.push(grp);
@@ -329,7 +343,7 @@ function init(){
     sp[j*3]=rand(-11,11); sp[j*3+1]=rand(-8,9); sp[j*3+2]=rand(-7,7);
     var kk=rand(0.85,1.0), tint=Math.random();
     sc[j*3]=kk; sc[j*3+1]=kk*(0.94+tint*0.05); sc[j*3+2]=kk*(0.98+tint*0.02);
-    ss[j]=rand(0.9,2.6);
+    ss[j]=rand(1.0,2.8);
   }
   snowPts = makePoints(sp,sc,ss,makeMaterial(0.85, 1.12));
   scene.add(snowPts);
@@ -366,13 +380,17 @@ function loop(now){
 
   pulseV *= 0.94;
   treePts.material.uniforms.uPulse.value = pulseV;
+  treePts.material.uniforms.uTime.value = time;
   snowPts.material.uniforms.uPulse.value = pulseV*0.5;
-  $("#flash").style.opacity = (pulseV*0.28).toFixed(3);
+  snowPts.material.uniforms.uTime.value = time;
+  $("#flash").style.opacity = (pulseV*0.34).toFixed(3);
 
   star.rotation.z = Math.sin(time*0.8)*0.12;
-  star.scale.setScalar(1 + Math.sin(time*2.2)*0.07 + pulseV*0.3);
-  glow.material.opacity = 0.42 + Math.sin(time*2.0)*0.1 + pulseV*0.3;
-  glow.scale.setScalar(2.0 + Math.sin(time*1.6)*0.2);
+  star.scale.setScalar(1.12 + Math.sin(time*2.2)*0.08 + pulseV*0.35);
+  glow.material.opacity = 0.62 + Math.sin(time*2.0)*0.14 + pulseV*0.3;
+  glow.scale.setScalar(3.1 + Math.sin(time*1.6)*0.35 + pulseV*0.8);
+  halo.material.opacity = 0.11 + Math.sin(time*1.15)*0.05 + pulseV*0.22;
+  halo.scale.setScalar(6.8 + Math.sin(time*1.15)*0.9 + pulseV*1.6);
 
   for(var b=0;b<gifts.length;b++){
     var g=gifts[b], u=g.userData;
@@ -380,7 +398,7 @@ function loop(now){
     g.position.y += Math.sin(time*1.3+u.ph)*0.09*e;
     g.rotation.y += dt*(0.25 + u.spin*e);
     g.rotation.x = Math.sin(time*0.7+u.ph)*0.18*e;
-    g.scale.setScalar(1 + e*0.9);
+    g.scale.setScalar(1 + e*0.55);
   }
 
   // 雪花下落
@@ -405,8 +423,8 @@ function loop(now){
   cmx += (mx-cmx)*0.045; cmy += (my-cmy)*0.045;
   camera.position.x = cmx*2.2 + Math.sin(time*47.0)*0.10*pulseV;
   camera.position.y = 0.6 - cmy*1.2 + Math.cos(time*53.0)*0.07*pulseV;
-  camera.position.z = 13 - e*1.2;
-  camera.lookAt(0, -0.1, 0);
+  camera.position.z = 12.2 - e*1.3;
+  camera.lookAt(0, 0.25, 0);
   treeGroup.rotation.y = time*0.075 + cmx*0.45;
 
   $("#bless").style.opacity = Math.max(0,(e-0.45)/0.5).toFixed(3);
